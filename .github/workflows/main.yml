@@ -1,0 +1,23 @@
+name: Check Update
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Monitor
+        id: monitor
+        run: python monitor.py
+        continue-on-error: true
+      - name: Commit if changed
+        if: github.event_name == 'schedule' || steps.monitor.outputs.exit_code == 10
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Monitor Bot"
+          git add last_hash.txt
+          git commit -m "Update hash" || exit 0
+          git push
