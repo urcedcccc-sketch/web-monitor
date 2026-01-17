@@ -22,37 +22,48 @@
     </div>
 
     <script>
-        async function updateGithub() {
+       async function updateGithub() {
             const url = document.getElementById('urlInput').value;
             const token = document.getElementById('tokenInput').value;
             const log = document.getElementById('log');
-            const repo = "urcedcccc-sketch/web-monitor"; // ⚠️记得修改这里！
+            const repo = "你的用户名/web-monitor"; // 👈 再次确认这里！
 
-            log.innerText = "正在获取旧文件信息...";
-            
             try {
-                // 1. 获取原文件内容（为了拿到 sha 值）
+                // 第一步：尝试读取
                 const res = await fetch(`https://api.github.com/repos/${repo}/contents/url.txt`, {
                     headers: { "Authorization": `token ${token}` }
                 });
+                
+                if (res.status === 404) {
+                    log.innerText = "❌ 错误：找不到 url.txt 文件，请先在仓库手动创建它。";
+                    return;
+                } else if (res.status === 401) {
+                    log.innerText = "❌ 错误：Token 无效或已过期。";
+                    return;
+                }
+
                 const data = await res.json();
                 const sha = data.sha;
 
-                // 2. 更新文件内容
+                // 第二步：尝试写入
                 const updateRes = await fetch(`https://api.github.com/repos/${repo}/contents/url.txt`, {
                     method: "PUT",
                     headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
                         message: "Update monitor URL",
-                        content: btoa(url), // Base64 编码
+                        content: btoa(url),
                         sha: sha
                     })
                 });
 
-                if(updateRes.ok) log.innerText = "✅ 成功！GitHub Actions 将在5分钟内启动。";
-                else log.innerText = "❌ 失败，请检查 Token 权限或仓库路径。";
+                if(updateRes.ok) {
+                    log.innerText = "✅ 同步成功！";
+                } else {
+                    const errorMsg = await updateRes.json();
+                    log.innerText = "❌ 写入失败: " + errorMsg.message;
+                }
             } catch (e) {
-                log.innerText = "错误: " + e.message;
+                log.innerText = "网络错误: " + e.message;
             }
         }
     </script>
