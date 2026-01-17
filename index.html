@@ -2,69 +2,106 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>监测控制台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监测控制台 - 修复增强版</title>
     <style>
-        body { font-family: system-ui; max-width: 500px; margin: 50px auto; padding: 20px; background: #f4f4f9; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: #2ea44f; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 550px; margin: 40px auto; padding: 20px; background: #f6f8fa; color: #24292f; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2); border: 1px solid #d0d7de; }
+        h3 { margin-top: 0; color: #0969da; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 14px; }
+        input { width: 100%; padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; box-sizing: border-box; font-size: 14px; transition: border-color 0.2s; }
+        input:focus { border-color: #0969da; outline: none; box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3); }
+        button { width: 100%; padding: 12px; background: #2da44e; color: white; border: 1px solid rgba(27, 31, 36, 0.15); border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; margin-top: 10px; }
         button:hover { background: #2c974b; }
-        #log { margin-top: 15px; font-size: 13px; color: #666; }
+        button:disabled { background: #94d3a2; cursor: not-allowed; }
+        #log { margin-top: 20px; padding: 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; display: none; }
+        .error { background: #ffebe9; color: #cf222e; border: 1px solid rgba(207, 34, 46, 0.15); }
+        .success { background: #dafbe1; color: #1a7f37; border: 1px solid rgba(26, 127, 55, 0.15); }
     </style>
 </head>
 <body>
     <div class="card">
-        <h3>配置监测任务</h3>
-        <input type="text" id="urlInput" placeholder="请输入监测目标 URL">
-        <input type="password" id="tokenInput" placeholder="粘贴你的 GitHub Token (ghp_...)">
-        <button onclick="updateGithub()">同步配置并开始监测</button>
+        <h3>🚀 配置监测任务</h3>
+        <div class="input-group">
+            <label for="urlInput">监测目标 URL</label>
+            <input type="text" id="urlInput" placeholder="https://example.com" value="">
+        </div>
+        <div class="input-group">
+            <label for="tokenInput">GitHub Token (Classic)</label>
+            <input type="password" id="tokenInput" placeholder="粘贴以 ghp_ 开头的 Token">
+        </div>
+        <button id="submitBtn" onclick="updateGithub()">同步配置并开始监测</button>
         <div id="log"></div>
     </div>
 
     <script>
-       async function updateGithub() {
-            const url = document.getElementById('urlInput').value;
-            const token = document.getElementById('tokenInput').value;
+        // 🛠️ 资深程序员提醒：请确保这里的用户名与你的 GitHub ID 完全一致
+        const REPO_PATH = "urcedcccc-sketch/web-monitor"; 
+
+        async function updateGithub() {
+            const url = document.getElementById('urlInput').value.trim();
+            const token = document.getElementById('tokenInput').value.trim();
             const log = document.getElementById('log');
-            const repo = "urcedcccc-sketch/web-monitor"; // 👈 再次确认这里！
+            const btn = document.getElementById('submitBtn');
+
+            if (!url || !token) {
+                showLog("请填写完整的 URL 和 Token", "error");
+                return;
+            }
+
+            btn.disabled = true;
+            showLog("正在连接 GitHub API...", "success");
 
             try {
-                // 第一步：尝试读取
-                const res = await fetch(`https://api.github.com/repos/${repo}/contents/url.txt`, {
-                    headers: { "Authorization": `token ${token}` }
+                // 1. 获取 url.txt 的最新状态 (sha)
+                const getRes = await fetch(`https://api.github.com/repos/${REPO_PATH}/contents/url.txt`, {
+                    headers: { "Authorization": `token ${token}`, "Accept": "application/vnd.github.v3+json" }
                 });
-                
-                if (res.status === 404) {
-                    log.innerText = "❌ 错误：找不到 url.txt 文件，请先在仓库手动创建它。";
-                    return;
-                } else if (res.status === 401) {
-                    log.innerText = "❌ 错误：Token 无效或已过期。";
-                    return;
+
+                if (!getRes.ok) {
+                    const errData = await getRes.json();
+                    throw new Error(`读取失败(${getRes.status}): ${errData.message}`);
                 }
 
-                const data = await res.json();
-                const sha = data.sha;
+                const fileData = await getRes.json();
+                const sha = fileData.sha;
 
-                // 第二步：尝试写入
-                const updateRes = await fetch(`https://api.github.com/repos/${repo}/contents/url.txt`, {
+                // 2. 对 URL 进行 Base64 编码（解决特殊字符问题）
+                const encodedUrl = btoa(unescape(encodeURIComponent(url)));
+
+                // 3. 提交更新
+                const putRes = await fetch(`https://api.github.com/repos/${REPO_PATH}/contents/url.txt`, {
                     method: "PUT",
-                    headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
+                    headers: { 
+                        "Authorization": `token ${token}`,
+                        "Content-Type": "application/json"
+                    },
                     body: JSON.stringify({
-                        message: "Update monitor URL",
-                        content: btoa(url),
+                        message: "web: update monitor target",
+                        content: encodedUrl,
                         sha: sha
                     })
                 });
 
-                if(updateRes.ok) {
-                    log.innerText = "✅ 同步成功！";
+                if (putRes.ok) {
+                    showLog("✅ 配置已成功同步到 GitHub！\nActions 监测任务将在 5 分钟内自动触发。", "success");
                 } else {
-                    const errorMsg = await updateRes.json();
-                    log.innerText = "❌ 写入失败: " + errorMsg.message;
+                    const errData = await putRes.json();
+                    throw new Error(`写入失败(${putRes.status}): ${errData.message}`);
                 }
+
             } catch (e) {
-                log.innerText = "网络错误: " + e.message;
+                showLog("❌ 运行出错：\n" + e.message + "\n\n排查建议：\n1. 检查 Token 是否勾选 'repo' 权限\n2. 确认仓库中是否存在 url.txt", "error");
+            } finally {
+                btn.disabled = false;
             }
+        }
+
+        function showLog(msg, type) {
+            log.style.display = "block";
+            log.className = type;
+            log.innerText = msg;
         }
     </script>
 </body>
